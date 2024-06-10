@@ -411,7 +411,7 @@ impl Default for TcpOptions {
 impl Default for UdpOptions {
     fn default() -> Self {
         Self {
-            recv_buffer_size: 32 * 1024,
+            recv_buffer_size: 64 * 1024,
             send_buffer_size: 16 * 1024,
         }
     }
