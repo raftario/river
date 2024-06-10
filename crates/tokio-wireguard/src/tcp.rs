@@ -88,7 +88,6 @@ impl TcpStream {
         Err(Error::from(ErrorKind::TimedOut))
     }
 
-    #[inline]
     fn endpoint<F>(&self, f: F) -> Result<SocketAddr>
     where
         F: FnOnce(&mut Socket<'static>) -> Option<IpEndpoint>,
