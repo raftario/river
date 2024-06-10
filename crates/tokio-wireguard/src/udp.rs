@@ -215,7 +215,6 @@ impl UdpSocket {
 }
 
 impl Evented for Socket<'static> {
-    #[inline]
     fn readiness(&self) -> Ready {
         let mut readiness = Ready::EMPTY;
         if self.is_open() && self.can_recv() {
@@ -227,11 +226,10 @@ impl Evented for Socket<'static> {
         readiness
     }
 
-    #[inline]
     fn register_read_waker(&mut self, waker: &Waker) {
         self.register_recv_waker(waker)
     }
-    #[inline]
+
     fn register_write_waker(&mut self, waker: &Waker) {
         self.register_send_waker(waker)
     }

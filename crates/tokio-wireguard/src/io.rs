@@ -35,12 +35,10 @@ impl<E: Evented> IO<E> {
         }
     }
 
-    #[inline]
     pub fn interface(&self) -> &Interface {
         &self.interface
     }
 
-    #[inline]
     pub fn with<F, R>(&self, f: F) -> Result<R>
     where
         F: FnOnce(&mut E) -> R,
@@ -56,22 +54,18 @@ impl<E: Evented> IO<E> {
             .ok_or_else(Interface::error)
     }
 
-    #[inline]
-    pub fn try_io<F, R>(&self, mut f: F) -> Result<R>
+    pub fn try_io<F, R>(&self, f: F) -> Result<R>
     where
         F: FnMut(&mut E) -> Poll<Result<R>>,
     {
-        let result = self.with(|e| match f(e) {
-            Poll::Ready(result) => result,
-            Poll::Pending => Err(Error::from(ErrorKind::WouldBlock)),
-        });
+        let result = self.with(f);
         match result {
-            Ok(result) => result,
+            Ok(Poll::Ready(result)) => result,
+            Ok(Poll::Pending) => Err(Error::from(ErrorKind::WouldBlock)),
             Err(e) => Err(e),
         }
     }
 
-    #[inline]
     pub async fn io<F, R>(&self, interest: Interest, mut f: F) -> Result<R>
     where
         F: FnMut(&mut E) -> Poll<Result<R>>,
@@ -98,7 +92,6 @@ impl<E: Evented> IO<E> {
         }
     }
 
-    #[inline]
     pub async fn ready(&self, interest: Interest) -> Result<Ready> {
         loop {
             let notified = self.wake.notify.notified();
@@ -106,24 +99,28 @@ impl<E: Evented> IO<E> {
             notified.as_mut().enable();
 
             let ready = self.with(|e| {
-                if interest.is_readable() || interest.is_error() {
-                    e.register_read_waker(&self.wakers.read);
+                let ready = e.readiness();
+                if satisfies(ready, interest) {
+                    Some(ready)
+                } else {
+                    if interest.is_readable() || interest.is_error() {
+                        e.register_read_waker(&self.wakers.read);
+                    }
+                    if interest.is_writable() || interest.is_error() {
+                        e.register_write_waker(&self.wakers.write);
+                    }
+                    None
                 }
-                if interest.is_writable() || interest.is_error() {
-                    e.register_write_waker(&self.wakers.write);
-                }
-                e.readiness()
             });
 
             match ready {
-                Ok(ready) if satisfies(ready, interest) => break Ok(ready),
+                Ok(None) => notified.await,
+                Ok(Some(ready)) => break Ok(ready),
                 Err(e) => break Err(e),
-                _ => notified.await,
             }
         }
     }
 
-    #[inline]
     pub fn poll_io<F, R>(&self, interest: Interest, cx: &mut Context<'_>, f: F) -> Poll<Result<R>>
     where
         F: FnOnce(&mut E) -> Poll<Result<R>>,
@@ -147,7 +144,6 @@ impl<E: Evented> IO<E> {
         }
     }
 
-    #[inline]
     pub fn poll_ready(&self, interest: Interest, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let ready = self.with(|e| {
             if satisfies(e.readiness(), interest) {
@@ -199,7 +195,6 @@ pub trait Evented {
     fn register_write_waker(&mut self, waker: &Waker);
 }
 
-#[inline]
 fn satisfies(readiness: Ready, interest: Interest) -> bool {
     let mut anyof = Ready::EMPTY;
     if interest.is_readable() || interest.is_error() {
