@@ -93,10 +93,10 @@ impl Allocations {
                 };
 
                 match (slot, ip, proto) {
-                    (Port { tcp_v4: slot, .. }, IpAddr::V4(_), Proto::Tcp)
-                    | (Port { tcp_v6: slot, .. }, IpAddr::V6(_), Proto::Tcp)
-                    | (Port { udp_v4: slot, .. }, IpAddr::V4(_), Proto::Udp)
-                    | (Port { udp_v6: slot, .. }, IpAddr::V6(_), Proto::Udp)
+                    (Port { tcp_v4: slot, .. }, IpAddr::V4(..), Proto::Tcp)
+                    | (Port { tcp_v6: slot, .. }, IpAddr::V6(..), Proto::Tcp)
+                    | (Port { udp_v4: slot, .. }, IpAddr::V4(..), Proto::Udp)
+                    | (Port { udp_v6: slot, .. }, IpAddr::V6(..), Proto::Udp)
                         if slot
                             .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
                             .is_ok() =>
@@ -115,10 +115,10 @@ impl Allocations {
     pub fn release(&self, allocation: Allocation) {
         if let Some(slot) = self.list.get(allocation.address.port() as usize) {
             match (allocation.address.ip(), allocation.proto) {
-                (IpAddr::V4(_), Proto::Tcp) => slot.tcp_v4.store(false, Ordering::Release),
-                (IpAddr::V6(_), Proto::Tcp) => slot.tcp_v6.store(false, Ordering::Release),
-                (IpAddr::V4(_), Proto::Udp) => slot.udp_v4.store(false, Ordering::Release),
-                (IpAddr::V6(_), Proto::Udp) => slot.udp_v6.store(false, Ordering::Release),
+                (IpAddr::V4(..), Proto::Tcp) => slot.tcp_v4.store(false, Ordering::Release),
+                (IpAddr::V6(..), Proto::Tcp) => slot.tcp_v6.store(false, Ordering::Release),
+                (IpAddr::V4(..), Proto::Udp) => slot.udp_v4.store(false, Ordering::Release),
+                (IpAddr::V6(..), Proto::Udp) => slot.udp_v6.store(false, Ordering::Release),
             }
         }
     }

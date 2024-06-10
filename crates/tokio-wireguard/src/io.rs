@@ -205,12 +205,10 @@ fn satisfies(readiness: Ready, interest: Interest) -> bool {
     if interest.is_readable() || interest.is_error() {
         anyof |= Ready::READABLE;
         anyof |= Ready::READ_CLOSED;
-        anyof |= Ready::ERROR;
     }
     if interest.is_writable() || interest.is_error() {
         anyof |= Ready::WRITABLE;
         anyof |= Ready::WRITE_CLOSED;
-        anyof |= Ready::ERROR;
     }
     anyof & readiness != Ready::EMPTY
 }

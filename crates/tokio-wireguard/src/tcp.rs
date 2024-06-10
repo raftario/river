@@ -42,8 +42,8 @@ impl TcpStream {
 
         for target in targets {
             let Some(allocation) = interface.allocate_tcp(match target {
-                SocketAddr::V4(_) => SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)),
-                SocketAddr::V6(_) => {
+                SocketAddr::V4(..) => SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)),
+                SocketAddr::V6(..) => {
                     SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0))
                 }
             }) else {
@@ -71,7 +71,7 @@ impl TcpStream {
             let ready = async {
                 loop {
                     let ready = socket.ready(Interest::WRITABLE).await?;
-                    if !ready.is_write_closed() {
+                    if ready & Ready::WRITABLE == Ready::WRITABLE {
                         break Ok(());
                     }
                 }

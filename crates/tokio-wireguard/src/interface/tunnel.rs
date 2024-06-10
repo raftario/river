@@ -105,7 +105,7 @@ impl Tunnel {
                 .tunnel
                 .decapsulate(Some(source.ip()), &buffers.0[..len], &mut buffers.1)
             {
-                TunnResult::Err(_) => return None,
+                TunnResult::Err(..) => return None,
                 TunnResult::Done => None,
                 TunnResult::WriteToNetwork(mut datagram) => loop {
                     socket.send_to(datagram, source).await.ok();

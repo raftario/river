@@ -87,8 +87,8 @@ impl Address {
 
     pub fn is_compatible(&self, other: SocketAddr) -> bool {
         match (self, other) {
-            (Self::Dual(..) | Self::V4(..), SocketAddr::V4(_)) => true,
-            (Self::Dual(..) | Self::V6(..), SocketAddr::V6(_)) => true,
+            (Self::Dual(..) | Self::V4(..), SocketAddr::V4(..)) => true,
+            (Self::Dual(..) | Self::V6(..), SocketAddr::V6(..)) => true,
             _ => false,
         }
     }

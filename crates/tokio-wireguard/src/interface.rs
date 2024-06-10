@@ -192,17 +192,17 @@ impl Interface {
                     let send = tunnel.socket().poll_send_ready(cx);
                     let can_send = device.can_send();
 
-                    if let Poll::Ready(_) = poll.as_mut().poll(cx) {
+                    if let Poll::Ready(()) = poll.as_mut().poll(cx) {
                         Poll::Ready(Select::Poll)
                     } else if let (Poll::Ready(Some(message)), Close::No) =
                         (rx.poll_recv(cx), close)
                     {
                         Poll::Ready(Select::Message(message))
-                    } else if let (Poll::Ready(_), Poll::Ready(_)) = (recv, &send) {
+                    } else if let (Poll::Ready(..), Poll::Ready(..)) = (recv, &send) {
                         Poll::Ready(Select::Recv)
-                    } else if let (true, Poll::Ready(_)) = (can_send, send) {
+                    } else if let (true, Poll::Ready(..)) = (can_send, send) {
                         Poll::Ready(Select::Send)
-                    } else if let Poll::Ready(_) = timers.poll_tick(cx) {
+                    } else if let Poll::Ready(..) = timers.poll_tick(cx) {
                         Poll::Ready(Select::Timers)
                     } else if let (false, Close::Ready) = (can_send, close) {
                         Poll::Ready(Select::Close)

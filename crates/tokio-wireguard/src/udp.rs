@@ -88,8 +88,8 @@ impl UdpSocket {
         let target = lookup_host(target)
             .await?
             .find(|target| match (target, self.socket.interface().address()) {
-                (SocketAddr::V4(_), Address::Dual(..) | Address::V4(_)) => true,
-                (SocketAddr::V6(_), Address::Dual(..) | Address::V6(_)) => true,
+                (SocketAddr::V4(..), Address::Dual(..) | Address::V4(..)) => true,
+                (SocketAddr::V6(..), Address::Dual(..) | Address::V6(..)) => true,
                 _ => false,
             })
             .ok_or_else(|| {
