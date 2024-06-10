@@ -1,0 +1,40 @@
+[package]
+name = "tokio-wireguard"
+version = "0.1.0"
+rust-version = "1.75"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+tokio = { version = "1.30", default-features = false, features = [
+    "rt",
+    "net",
+    "time",
+    "sync",
+    "io-util",
+    "parking_lot",
+] }
+boringtun = { version = "0.6.0", default-features = false }
+smoltcp = { version = "0.11.0", default-features = false, features = [
+    "std",
+    "medium-ip",
+    "proto-ipv4",
+    "proto-ipv6",
+    "socket-tcp",
+    "socket-udp",
+    "async",
+] }
+bytes = { version = "1.0", default-features = false }
+socket2 = { version = "0.5.3", default-features = false }
+ipnet = { version = "2.2", default-features = false, features = ["std"] }
+parking_lot = { version = "0.12.1", default-features = false, features = [
+    "arc_lock",
+    "send_guard",
+] }
+rand = { version = "0.8.4", default-features = false, features = ["getrandom"] }
+atomic-waker = { version = "1.0", default-features = false }
+pin-project-lite = { version = "0.2.12", default-features = false }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
