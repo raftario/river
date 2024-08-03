@@ -3,7 +3,8 @@
 //! This crate provides a Tokio-based in-process implementation of WireGuard.
 //! Each [`Interface`] is backed by an independent TCP/IP stack that tunnels all of its traffic
 //! over WireGuard, and can be used to create TCP ([`TcpStream`] and [`TcpListener`])
-//! and UDP ([`UdpSocket`]) sockets.
+//! and UDP ([`UdpSocket`]) sockets, which attempt to follow the API of [`tokio::net`] as closely as
+//! possible.
 //!
 //! The interface can be dynamically configured at runtime, and any number of interfaces can exist
 //! in the same process. This makes it possible for an application to support WireGuard with fine

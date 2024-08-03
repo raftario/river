@@ -112,11 +112,11 @@ impl TcpStream {
 
         Ok(SocketAddr::new(address, port))
     }
-    /// [`tokio::net::tcp::TcpStream::local_addr`]
+    /// [`tokio::net::TcpStream::local_addr`]
     pub fn local_addr(&self) -> Result<SocketAddr> {
         self.endpoint(|s| s.local_endpoint())
     }
-    /// [`tokio::net::tcp::TcpStream::peer_addr`]
+    /// [`tokio::net::TcpStream::peer_addr`]
     pub fn peer_addr(&self) -> Result<SocketAddr> {
         self.endpoint(|s| s.remote_endpoint())
     }
@@ -134,28 +134,28 @@ impl TcpStream {
             }
         }
     }
-    /// [`tokio::net::tcp::TcpStream::peek`]
+    /// [`tokio::net::TcpStream::peek`]
     pub async fn peek<B: BufMut>(&self, mut buf: B) -> Result<usize> {
         self.socket
             .io(Interest::READABLE, |s| Self::peek_io(s, &mut buf))
             .await
     }
-    /// [`tokio::net::tcp::TcpStream::poll_peek`]
+    /// [`tokio::net::TcpStream::poll_peek`]
     pub fn poll_peek<B: BufMut>(&self, cx: &mut Context<'_>, buf: B) -> Poll<Result<usize>> {
         self.socket
             .poll_io(Interest::READABLE, cx, |s| Self::peek_io(s, buf))
     }
 
-    /// [`tokio::net::tcp::TcpStream::ready`]
+    /// [`tokio::net::TcpStream::ready`]
     pub async fn ready(&self, interest: Interest) -> Result<Ready> {
         self.socket.ready(interest).await
     }
 
-    /// [`tokio::net::tcp::TcpStream::readable`]
+    /// [`tokio::net::TcpStream::readable`]
     pub async fn readable(&self) -> Result<()> {
         self.socket.ready(Interest::READABLE).await.map(drop)
     }
-    /// [`tokio::net::tcp::TcpStream::poll_read_ready`]
+    /// [`tokio::net::TcpStream::poll_read_ready`]
     pub fn poll_read_ready(&self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         self.socket.poll_ready(Interest::READABLE, cx)
     }
@@ -174,16 +174,16 @@ impl TcpStream {
             }
         }
     }
-    /// [`tokio::net::tcp::TcpStream::try_read`]
+    /// [`tokio::net::TcpStream::try_read`]
     pub fn try_read<B: BufMut>(&self, buf: B) -> Result<usize> {
         self.socket.try_io(|s| Self::read_io(s, buf))
     }
 
-    /// [`tokio::net::tcp::TcpStream::writable`]
+    /// [`tokio::net::TcpStream::writable`]
     pub async fn writable(&self) -> Result<()> {
         self.socket.ready(Interest::WRITABLE).await.map(drop)
     }
-    /// [`tokio::net::tcp::TcpStream::poll_write_ready`]
+    /// [`tokio::net::TcpStream::poll_write_ready`]
     pub fn poll_write_ready(&self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         self.socket.poll_ready(Interest::WRITABLE, cx)
     }
@@ -197,7 +197,7 @@ impl TcpStream {
             }
         }
     }
-    /// [`tokio::net::tcp::TcpStream::try_write`]
+    /// [`tokio::net::TcpStream::try_write`]
     pub fn try_write(&self, buf: &[u8]) -> Result<usize> {
         self.socket.try_io(|s| Self::write_io(s, buf))
     }
@@ -211,11 +211,11 @@ impl TcpStream {
         }
     }
 
-    /// [`tokio::net::tcp::TcpStream::split`]
+    /// [`tokio::net::TcpStream::split`]
     pub fn split(&self) -> (ReadHalf<'_>, WriteHalf<'_>) {
         (ReadHalf(self), WriteHalf(self))
     }
-    /// [`tokio::net::tcp::TcpStream::into_split`]
+    /// [`tokio::net::TcpStream::into_split`]
     pub fn into_split(self) -> (OwnedReadHalf, OwnedWriteHalf) {
         let read = OwnedReadHalf(self);
         let write = OwnedWriteHalf(TcpStream {
@@ -224,20 +224,20 @@ impl TcpStream {
         (read, write)
     }
 
-    /// [`tokio::net::tcp::TcpStream::nodelay`]
+    /// [`tokio::net::TcpStream::nodelay`]
     pub fn nodelay(&self) -> Result<bool> {
         self.socket.with(|s| !s.nagle_enabled())
     }
-    /// [`tokio::net::tcp::TcpStream::set_nodelay`]
+    /// [`tokio::net::TcpStream::set_nodelay`]
     pub fn set_nodelay(&mut self, nodelay: bool) -> Result<()> {
         self.socket.with(|s| s.set_nagle_enabled(!nodelay))
     }
 
-    /// [`tokio::net::tcp::TcpStream::ttl`]
+    /// [`tokio::net::TcpStream::ttl`]
     pub fn ttl(&self) -> Result<u32> {
         self.socket.with(|s| s.hop_limit().unwrap_or(64).into())
     }
-    /// [`tokio::net::tcp::TcpStream::set_ttl`]
+    /// [`tokio::net::TcpStream::set_ttl`]
     pub fn set_ttl(&mut self, ttl: u32) -> Result<()> {
         self.socket.with(|s| s.set_hop_limit(ttl.try_into().ok()))
     }
