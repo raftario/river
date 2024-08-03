@@ -791,6 +791,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-traits"
+version = "0.1.0"
+dependencies = [
+ "tokio",
+]
+
+[[package]]
 name = "tokio-wireguard"
 version = "0.1.0"
 dependencies = [

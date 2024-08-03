@@ -1,5 +1,6 @@
 use std::{
     net::{IpAddr, SocketAddr},
+    sync::Arc,
     task::{Context, Poll, Waker},
 };
 
@@ -15,15 +16,19 @@ use tokio::{
 
 use crate::{
     config::Address,
-    interface::ToInterface,
+    interface::{Interface, ToInterface},
     io::{Evented, IO},
 };
 
+/// A WireGuard UDP socket
+///
+/// This type mostly behaves like and shares the same API as [`tokio::net::UdpSocket`].
 pub struct UdpSocket {
     socket: IO<Socket<'static>>,
 }
 
 impl UdpSocket {
+    /// Like [`tokio::net::UdpSocket::bind`], but on a WireGuard [`Interface`]
     pub async fn bind<A: ToSocketAddrs, I: ToInterface>(addr: A, iface: I) -> Result<Self> {
         let interface = iface.to_interface().await?;
         let allocation = lookup_host(addr)
@@ -46,11 +51,12 @@ impl UdpSocket {
         socket.bind(allocation.address()).unwrap();
 
         let socket = IO::new(interface, socket, Some(allocation));
-        socket.interface().register_udp(socket.clone())?;
+        socket.interface().register_udp(Arc::clone(&socket))?;
 
         Ok(UdpSocket { socket })
     }
 
+    /// [`tokio::net::UdpSocket::local_addr`]
     pub fn local_addr(&self) -> Result<SocketAddr> {
         let endpoint = self.socket.with(|s| s.endpoint())?;
         let address: IpAddr = endpoint.addr.unwrap().into();
@@ -59,13 +65,16 @@ impl UdpSocket {
         Ok(SocketAddr::new(address, port))
     }
 
+    /// [`tokio::net::UdpSocket::ready`]
     pub async fn ready(&self, interest: Interest) -> Result<Ready> {
         self.socket.ready(interest).await
     }
 
+    /// [`tokio::net::UdpSocket::writable`]
     pub async fn writable(&self) -> Result<()> {
         self.socket.ready(Interest::WRITABLE).await.map(drop)
     }
+    /// [`tokio::net::UdpSocket::poll_send_ready`]
     pub fn poll_send_ready(&self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         self.socket.poll_ready(Interest::WRITABLE, cx)
     }
@@ -84,6 +93,7 @@ impl UdpSocket {
             Err(SendError::BufferFull) => Poll::Pending,
         }
     }
+    /// [`tokio::net::UdpSocket::send_to`]
     pub async fn send_to<A: ToSocketAddrs>(&self, buf: &[u8], target: A) -> Result<usize> {
         let target = lookup_host(target)
             .await?
@@ -100,6 +110,7 @@ impl UdpSocket {
             .io(Interest::WRITABLE, |s| Self::send_to_io(s, buf, target))
             .await
     }
+    /// [`tokio::net::UdpSocket::poll_send_to`]
     pub fn poll_send_to(
         &self,
         cx: &mut Context<'_>,
@@ -109,20 +120,23 @@ impl UdpSocket {
         self.socket
             .poll_io(Interest::READABLE, cx, |s| Self::send_to_io(s, buf, target))
     }
+    /// [`tokio::net::UdpSocket::try_send_to`]
     pub fn try_send_to(&self, buf: &mut [u8], target: SocketAddr) -> Result<usize> {
         self.socket.try_io(|s| Self::send_to_io(s, buf, target))
     }
 
+    /// [`tokio::net::UdpSocket::readable`]
     pub async fn readable(&self) -> Result<()> {
         self.socket.ready(Interest::READABLE).await.map(drop)
     }
+    /// [`tokio::net::UdpSocket::poll_recv_ready`]
     pub fn poll_recv_ready(&self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         self.socket.poll_ready(Interest::READABLE, cx)
     }
 
     fn recv_from_io<B: BufMut>(
         socket: &mut Socket<'static>,
-        buf: &mut B,
+        mut buf: B,
     ) -> Poll<Result<(usize, SocketAddr)>> {
         match socket.recv() {
             Ok((packet, meta)) => {
@@ -134,11 +148,13 @@ impl UdpSocket {
             _ => Poll::Pending,
         }
     }
-    pub async fn recv_from<B: BufMut>(&self, buf: &mut B) -> Result<(usize, SocketAddr)> {
+    /// [`tokio::net::UdpSocket::recv_from`]
+    pub async fn recv_from<B: BufMut>(&self, mut buf: B) -> Result<(usize, SocketAddr)> {
         self.socket
-            .io(Interest::READABLE, |s| Self::recv_from_io(s, buf))
+            .io(Interest::READABLE, |s| Self::recv_from_io(s, &mut buf))
             .await
     }
+    /// [`tokio::net::UdpSocket::poll_recv_from`]
     pub fn poll_recv_from(
         &self,
         cx: &mut Context<'_>,
@@ -148,13 +164,14 @@ impl UdpSocket {
             .poll_io(Interest::READABLE, cx, |s| Self::recv_from_io(s, buf))
             .map_ok(|(_, addr)| addr)
     }
-    pub fn try_recv_from<B: BufMut>(&self, buf: &mut B) -> Result<(usize, SocketAddr)> {
+    /// [`tokio::net::UdpSocket::try_recv_from`]
+    pub fn try_recv_from<B: BufMut>(&self, buf: B) -> Result<(usize, SocketAddr)> {
         self.socket.try_io(|s| Self::recv_from_io(s, buf))
     }
 
     fn peek_from_io<B: BufMut>(
         socket: &mut Socket<'static>,
-        buf: &mut B,
+        mut buf: B,
     ) -> Poll<Result<(usize, SocketAddr)>> {
         match socket.peek() {
             Ok((packet, meta)) => {
@@ -166,11 +183,13 @@ impl UdpSocket {
             _ => Poll::Pending,
         }
     }
-    pub async fn peek_from<B: BufMut>(&self, buf: &mut B) -> Result<(usize, SocketAddr)> {
+    /// [`tokio::net::UdpSocket::peek_from`]
+    pub async fn peek_from<B: BufMut>(&self, mut buf: B) -> Result<(usize, SocketAddr)> {
         self.socket
-            .io(Interest::READABLE, |s| Self::peek_from_io(s, buf))
+            .io(Interest::READABLE, |s| Self::peek_from_io(s, &mut buf))
             .await
     }
+    /// [`tokio::net::UdpSocket::poll_peek_from`]
     pub fn poll_peek_from(
         &self,
         cx: &mut Context<'_>,
@@ -180,7 +199,8 @@ impl UdpSocket {
             .poll_io(Interest::READABLE, cx, |s| Self::peek_from_io(s, buf))
             .map_ok(|(_, addr)| addr)
     }
-    pub fn try_peek_from<B: BufMut>(&self, buf: &mut B) -> Result<(usize, SocketAddr)> {
+    /// [`tokio::net::UdpSocket::try_peek_from`]
+    pub fn try_peek_from<B: BufMut>(&self, buf: B) -> Result<(usize, SocketAddr)> {
         self.socket.try_io(|s| Self::peek_from_io(s, buf))
     }
 
@@ -193,24 +213,34 @@ impl UdpSocket {
             _ => Poll::Pending,
         }
     }
+    /// [`tokio::net::UdpSocket::peek_sender`]
     pub async fn peek_sender(&self) -> Result<SocketAddr> {
         self.socket
             .io(Interest::READABLE, Self::peek_sender_io)
             .await
     }
+    /// [`tokio::net::UdpSocket::poll_peek_sender`]
     pub fn poll_peek_sender(&self, cx: &mut Context<'_>) -> Poll<Result<SocketAddr>> {
         self.socket
             .poll_io(Interest::READABLE, cx, Self::peek_sender_io)
     }
+    /// [`tokio::net::UdpSocket::try_peek_sender`]
     pub fn try_peek_sender(&self) -> Result<SocketAddr> {
         self.socket.try_io(Self::peek_sender_io)
     }
 
+    /// [`tokio::net::UdpSocket::ttl`]
     pub fn ttl(&self) -> Result<u32> {
         self.socket.with(|s| s.hop_limit().unwrap_or(64).into())
     }
+    /// [`tokio::net::UdpSocket::set_ttl`]
     pub fn set_ttl(&mut self, ttl: u32) -> Result<()> {
         self.socket.with(|s| s.set_hop_limit(ttl.try_into().ok()))
+    }
+
+    /// Interface to which this socket is bound
+    pub fn interface(&self) -> &Interface {
+        self.socket.interface()
     }
 }
 

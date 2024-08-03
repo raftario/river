@@ -14,7 +14,6 @@ use tokio::{
 
 use crate::{interface::Allocation, Interface, Shared};
 
-#[derive(Clone)]
 pub struct IO<E: Evented> {
     interface: Interface,
     evented: Shared<E>,
@@ -56,7 +55,7 @@ impl<E: Evented> IO<E> {
 
     pub fn try_io<F, R>(&self, f: F) -> Result<R>
     where
-        F: FnMut(&mut E) -> Poll<Result<R>>,
+        F: FnOnce(&mut E) -> Poll<Result<R>>,
     {
         let result = self.with(f);
         match result {
@@ -162,6 +161,22 @@ impl<E: Evented> IO<E> {
         match ready {
             Ok(poll) => poll,
             Err(e) => Poll::Ready(Err(e)),
+        }
+    }
+
+    pub fn is(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.evented, &other.evented)
+    }
+}
+
+impl<E: Evented> Clone for IO<E> {
+    fn clone(&self) -> Self {
+        Self {
+            interface: self.interface.clone(),
+            evented: self.evented.clone(),
+            allocation: self.allocation.clone(),
+            wake: self.wake.clone(),
+            wakers: self.wakers.clone(),
         }
     }
 }

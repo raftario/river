@@ -1,5 +1,5 @@
 use std::{
-    array,
+    array, fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     str::FromStr,
 };
@@ -7,26 +7,63 @@ use std::{
 use boringtun::x25519::{PublicKey, StaticSecret};
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 
+/// WireGuard configuration
 pub struct Config {
+    /// Local interface configuration
     pub interface: Interface,
+    /// Remote peer configurations
+    ///
+    /// Peers can also be added and removed dynamically at runtime using
+    /// [`Interface::add_peer`](crate::Interface::add_peer) and [`Interface::remove_peer`](crate::Interface::remove_peer).
     pub peers: Vec<Peer>,
 }
 
+/// Local interface configuration
 pub struct Interface {
+    /// Local WireGuard address
+    ///
+    /// This is the address of the local peer on the WireGuard network,
+    /// as opposed to the address on which WireGuard traffic is tunneled.
+    ///
+    /// This should be a unicast IPv4 or IPv6 address, or both. The network mask
+    /// specifies which IP addresses the interface can forward traffic to in addition
+    /// to its own address.
     pub address: Address,
+    /// Port on which tunneled WireGuard traffic is listened for.
+    ///
+    /// If not specified, a random port is chosen.
     pub listen_port: Option<u16>,
+    /// Private key of the local peer
     pub private_key: StaticSecret,
+    /// MTU
+    ///
+    /// Should be left unspecified.
     pub mtu: Option<usize>,
 }
 
+/// Remote peer configuration
 #[derive(Debug, Clone)]
 pub struct Peer {
+    /// Endpoint of the remote peer
+    ///
+    /// If not specified, the endpoint will be automatically populated when
+    /// tunneled traffic from the peer is received.
     pub endpoint: Option<SocketAddr>,
+    /// IP addresses for which the peer is allowed to send and receive traffic
+    ///
+    /// Some peers are capable of forwarding traffic, in which case this can be set to
+    /// any number of IP addresses.
     pub allowed_ips: Vec<IpNet>,
+    /// Public key of the remote peer
     pub public_key: PublicKey,
+    /// Keepalive interval at which the peer is pinged
+    ///
+    /// This is useful when the local interface is behind a NAT to
+    /// keep the connection alive.
     pub persistent_keepalive: Option<u16>,
 }
 
+/// An IPv4 or IPv6 address, or both, and their associated network mask
 #[derive(Debug, Clone, Copy)]
 pub enum Address {
     Dual(Ipv4Net, Ipv6Net),
@@ -44,7 +81,8 @@ pub enum AddressFromStrErr {
 }
 
 impl Address {
-    pub fn cidrs(&self) -> impl Iterator<Item = IpNet> {
+    /// Returns an iterator over the full IP networks of the address
+    pub fn networks(&self) -> impl Iterator<Item = IpNet> {
         match self {
             Self::Dual(v4, v6) => {
                 AddressIterator::Dual([IpNet::V4(*v4), IpNet::V6(*v6)].into_iter())
@@ -54,37 +92,43 @@ impl Address {
         }
     }
 
-    pub fn ips(&self) -> impl Iterator<Item = IpAddr> {
-        self.cidrs().map(|net| net.addr())
+    /// Returns an iterator over the specific IP addresses of the address
+    ///
+    /// The iterator will only yield one or two addresses, as opposed to every address
+    /// included in its networks.
+    pub fn addresses(&self) -> impl Iterator<Item = IpAddr> {
+        self.networks().map(|net| net.addr())
     }
 
+    /// Returns the IPv4 address if there is one
     pub fn v4(&self) -> Option<Ipv4Addr> {
         match self {
-            crate::config::Address::V4(net) | crate::config::Address::Dual(net, _) => {
-                Some(net.addr())
-            }
+            Self::V4(net) | Self::Dual(net, _) => Some(net.addr()),
             _ => None,
         }
     }
+    /// Returns the IPv6 address if there is one
     pub fn v6(&self) -> Option<Ipv6Addr> {
         match self {
-            crate::config::Address::V6(net) | crate::config::Address::Dual(_, net) => {
-                Some(net.addr())
-            }
+            Self::V6(net) | Self::Dual(_, net) => Some(net.addr()),
             _ => None,
         }
     }
 
+    /// Whether the address is a dual stack address
     pub fn is_dual(&self) -> bool {
-        matches!(self, Self::Dual(_, _))
+        matches!(self, Self::Dual(..))
     }
+    /// Whether the address has an IPv4 address
     pub fn is_v4(&self) -> bool {
-        self.v4().is_some()
+        matches!(self, Self::V4(..) | Self::Dual(..))
     }
+    /// Whether the address has an IPv6 address
     pub fn is_v6(&self) -> bool {
-        self.v6().is_some()
+        matches!(self, Self::V6(..) | Self::Dual(..))
     }
 
+    /// Whether the address has the same family as the given address
     pub fn is_compatible(&self, other: SocketAddr) -> bool {
         match (self, other) {
             (Self::Dual(..) | Self::V4(..), SocketAddr::V4(..)) => true,
@@ -130,6 +174,21 @@ impl FromStr for Address {
     }
 }
 
+impl fmt::Display for Address {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Dual(v4, v6) => {
+                fmt::Display::fmt(v4, f)?;
+                f.write_str(",")?;
+                fmt::Display::fmt(v6, f)?;
+                Ok(())
+            }
+            Self::V4(v4) => fmt::Display::fmt(v4, f),
+            Self::V6(v6) => fmt::Display::fmt(v6, f),
+        }
+    }
+}
+
 impl From<IpNet> for Address {
     fn from(net: IpNet) -> Self {
         match net {
@@ -163,6 +222,20 @@ impl From<Ipv6Addr> for Address {
         Self::from(Ipv6Net::from(addr))
     }
 }
+
+impl fmt::Display for AddressFromStrErr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Invalid(err) => err.fmt(f),
+            Self::Multicast(..) => f.write_str("multicast address"),
+            Self::DuplicateV4 => f.write_str("duplicate IPv4 address"),
+            Self::DuplicateV6 => f.write_str("duplicate IPv6 address"),
+            Self::Empty => f.write_str("empty address"),
+        }
+    }
+}
+
+impl std::error::Error for AddressFromStrErr {}
 
 enum AddressIterator<T> {
     Dual(array::IntoIter<T, 2>),

@@ -1,0 +1,14 @@
+[package]
+name = "tokio-traits"
+version = "0.1.0"
+rust-version = "1.75"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+tokio = { version = "1.0", default-features = false }
+
+[features]
+net = ["tokio/net"]
+full = ["net"]

@@ -127,7 +127,7 @@ impl Tunnel {
 
                 let address = *address;
                 self.send(len, |destination| {
-                    address.cidrs().any(|net| net.contains(&destination))
+                    address.networks().any(|net| net.contains(&destination))
                 })
                 .await
             }
@@ -151,7 +151,7 @@ impl Tunnel {
         let packet = packet.into_packet(&buffers.0);
         let destination = Tunn::dst_address(packet)?;
 
-        if address.ips().any(|ip| ip == destination) {
+        if address.addresses().any(|ip| ip == destination) {
             return Some(packet);
         }
         if !relay(destination) {

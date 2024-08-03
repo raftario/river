@@ -15,6 +15,7 @@ use std::{
 };
 
 use allocations::Proto;
+use boringtun::x25519::PublicKey;
 use pin_project_lite::pin_project;
 use rand::{rngs::OsRng, Rng, SeedableRng};
 use random::AtomicXorShift32;
@@ -36,6 +37,9 @@ mod tunnel;
 
 pub(crate) use allocations::Allocation;
 
+/// A handle to a WireGuard interface
+///
+/// Cloning returns a new handle to the same interface.
 #[derive(Clone)]
 pub struct Interface {
     tx: mpsc::UnboundedSender<Message>,
@@ -44,32 +48,47 @@ pub struct Interface {
     _drop: Arc<CloseOnDrop>,
 }
 
+/// Advanced options for configuring an [`Interface`]
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct Options {
+    /// Handle to the Tokio runtime on which the interface will be run
     pub runtime: Handle,
+    /// Default poll interval for the interface when idle
     pub poll_interval: Duration,
+    /// Inteval at which to update the internal WireGuard timers
     pub timer_interval: Duration,
+    /// TCP options
     pub tcp: TcpOptions,
+    /// UDP options
     pub udp: UdpOptions,
 }
 
+/// Advanced TCP options for configuring an [`Interface`]
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct TcpOptions {
+    /// Timeout for connecting to a remote peer
     pub connect_timeout: Duration,
+    /// Size of the TCP receive buffer
     pub recv_buffer_size: usize,
+    /// Size of the TCP send buffer
     pub send_buffer_size: usize,
+    /// Maximum number of pending connections on the listener
     pub backlog: usize,
 }
 
+/// Advanced UDP options for configuring an [`Interface`]
 #[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
 pub struct UdpOptions {
+    /// Size of the UDP receive buffer
     pub recv_buffer_size: usize,
+    /// Size of the UDP send buffer
     pub send_buffer_size: usize,
 }
 
+/// A trait for types that can be converted into an [`Interface`]
 pub trait ToInterface {
     fn to_interface(self) -> impl Future<Output = Result<Interface, io::Error>>;
 }
@@ -91,10 +110,19 @@ enum Message {
         target: SocketAddr,
         result: oneshot::Sender<Result<(), tcp::ConnectError>>,
     },
+    AddPeer {
+        config: crate::config::Peer,
+        result: oneshot::Sender<Result<(), io::Error>>,
+    },
+    RemovePeer {
+        key: PublicKey,
+        result: oneshot::Sender<bool>,
+    },
     Close,
 }
 
 pin_project! {
+    /// Future that resolves once its associated interface is in the closed state
     pub struct Closed<'a> {
         #[pin]
         notified: Notified<'a>,
@@ -103,26 +131,33 @@ pin_project! {
 }
 
 impl Interface {
+    /// Create a new interface
     pub fn new(config: crate::config::Config) -> Result<Self, io::Error> {
         Self::new_with(config, Options::default())
     }
 
-    pub fn error() -> io::Error {
-        io::Error::new(io::ErrorKind::BrokenPipe, "interface is closed")
-    }
-
+    /// Local address of the interface within the WireGuard network
     pub fn address(&self) -> Address {
         self.allocations.address
     }
 
+    /// Advanced options for the interface
     pub fn options(&self) -> &Options {
         &self.shared.options
     }
 
+    /// Request that the interface be closed
+    ///
+    /// All sockets created by the interface will be closed, and any attempt to send or receive data
+    /// using them will result in an error. Once all remaining queued packets have been sent,
+    /// the interface will enter the closed state.
     pub fn close(&self) {
         self.tx.send(Message::Close).ok();
     }
 
+    /// Returns a future that resolves once the interface is in the closed state
+    ///
+    /// See [`close`](Self::close) for more information.
     pub fn closed(&self) -> Closed<'_> {
         Closed {
             notified: self.shared.notify_closed.notified(),
@@ -130,10 +165,14 @@ impl Interface {
         }
     }
 
+    /// Whether the interface is in the closed state
+    ///
+    /// See [`close`](Self::close) for more information.
     pub fn is_closed(&self) -> bool {
         self.shared.is_closed.load(Ordering::Acquire)
     }
 
+    /// Create a new interface with advanced options
     pub fn new_with(config: crate::config::Config, options: Options) -> Result<Self, io::Error> {
         #[derive(Clone, Copy)]
         enum Close {
@@ -256,6 +295,12 @@ impl Interface {
                         sockets.register_tcp(socket);
                         poll.as_mut().reset(time::Instant::now());
                     }
+                    Select::Message(Message::AddPeer { config, result }) => {
+                        result.send(tunnel.add_peer(config)).ok();
+                    }
+                    Select::Message(Message::RemovePeer { key, result }) => {
+                        result.send(tunnel.remove_peer(&key)).ok();
+                    }
                     Select::Message(Message::Close) => {
                         close = Close::Requested;
                         sockets.close();
@@ -279,6 +324,31 @@ impl Interface {
 
         drop(scope);
         Ok(i)
+    }
+
+    /// Dynamically add a new peer to the interface. The peer will only become available
+    /// once the returned future resolves.
+    pub async fn add_peer(&self, config: crate::config::Peer) -> Result<(), io::Error> {
+        let (tx, rx) = oneshot::channel();
+        self.tx
+            .send(Message::AddPeer { config, result: tx })
+            .map_err(|_| Self::error())?;
+        rx.await.map_err(|_| Self::error())?
+    }
+    /// Removes a peer from the interface. Returns whether the peer existed.
+    pub async fn remove_peer(&self, key: &PublicKey) -> Result<bool, io::Error> {
+        let (tx, rx) = oneshot::channel();
+        self.tx
+            .send(Message::RemovePeer {
+                key: key.clone(),
+                result: tx,
+            })
+            .map_err(|_| Self::error())?;
+        rx.await.map_err(|_| Self::error())
+    }
+
+    pub(crate) fn error() -> io::Error {
+        io::Error::new(io::ErrorKind::BrokenPipe, "interface is closed")
     }
 
     pub(crate) fn register_tcp(
@@ -330,7 +400,7 @@ impl Interface {
     }
 
     fn smol(config: &crate::config::Interface) -> (smoltcp::iface::Interface, device::Device) {
-        let ips = config.address.ips();
+        let ips = config.address.addresses();
         let mut device = device::Device::new(&config);
         let mut config = smoltcp::iface::Config::new(HardwareAddress::Ip);
         config.random_seed = OsRng.gen();
