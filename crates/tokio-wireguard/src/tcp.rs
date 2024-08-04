@@ -385,7 +385,7 @@ impl TcpListener {
     }
 
     /// [`tokio::net::TcpListener::poll_accept`]
-    pub async fn poll_accept(&self, cx: &mut Context<'_>) -> Poll<Result<(TcpStream, SocketAddr)>> {
+    pub fn poll_accept(&self, cx: &mut Context<'_>) -> Poll<Result<(TcpStream, SocketAddr)>> {
         let socket = self
             .backlog
             .iter()

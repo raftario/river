@@ -1,5 +1,3 @@
-//! Utility functions for working with X25519 keys
-
 pub use boringtun::x25519::{PublicKey, StaticSecret};
 use rand::rngs::OsRng;
 
