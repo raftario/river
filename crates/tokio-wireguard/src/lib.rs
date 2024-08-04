@@ -13,6 +13,47 @@
 //! Interfaces can also forward traffic to remote WireGuard peers. However, at the moment, they cannot
 //! forward traffic to other interfaces outside of the WireGuard network.
 //!
+//! ```no_run
+//! # #[tokio::main]
+//! # async fn main() {
+//! # let (private_key, remote_public_key) = tokio_wireguard::x25519::keypair();
+//! use tokio::io::AsyncWriteExt;
+//! use tokio_wireguard::{
+//!     config::{Config, Interface, Peer},
+//!     interface::ToInterface,
+//!     TcpStream,
+//! };
+//!
+//! let config = Config {
+//!     interface: Interface {
+//!         private_key,
+//!         // Our address on the WireGuard network
+//!         address: "100.64.0.2/32".parse().unwrap(),
+//!         // Let the interface pick a random port
+//!         listen_port: None,
+//!         // Let the interface pick an appropriate MTU
+//!         mtu: None,
+//!     },
+//!     peers: vec![Peer {
+//!         public_key: remote_public_key,
+//!         // This is where the tunneled WireGuard traffic will be sent
+//!         endpoint: Some("198.51.100.30:51820".parse().unwrap()),
+//!         // IP addresses the peer can handle traffic to and from on the WireGuard network
+//!         // The /32 suffix indicates that the peer only handles traffic for itself
+//!         allowed_ips: vec!["100.64.0.1/32".parse().unwrap()],
+//!         // Send a keepalive packet every 15 seconds
+//!         persistent_keepalive: Some(15),
+//!     }],
+//! };
+//! let interface = config.to_interface().await.unwrap();
+//!
+//! let mut stream = TcpStream::connect("100.64.0.1:8080", &interface)
+//!     .await
+//!     .unwrap();
+//! stream.write_all(b"Bonjour").await.unwrap();
+//! # }
+//! ```
+//!
 //! This library is built on top of [`smoltcp`] and [`boringtun`], and could not exist without these
 //! amazing projects.
 
