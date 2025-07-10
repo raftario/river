@@ -174,7 +174,7 @@ impl<E: Evented> Clone for IO<E> {
         Self {
             interface: self.interface.clone(),
             evented: self.evented.clone(),
-            allocation: self.allocation.clone(),
+            allocation: self.allocation,
             wake: self.wake.clone(),
             wakers: self.wakers.clone(),
         }

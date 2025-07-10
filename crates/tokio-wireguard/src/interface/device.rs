@@ -84,17 +84,17 @@ impl smoltcp::phy::Device for Device {
     }
 }
 
-impl<'a> RxToken for &'a mut Token {
+impl RxToken for &mut Token {
     fn consume<R, F>(self, f: F) -> R
     where
-        F: FnOnce(&mut [u8]) -> R,
+        F: FnOnce(&[u8]) -> R,
     {
         self.queue.dequeue(&mut self.buffer);
-        f(&mut self.buffer)
+        f(&self.buffer)
     }
 }
 
-impl<'a> TxToken for &'a mut Token {
+impl TxToken for &mut Token {
     fn consume<R, F>(self, len: usize, f: F) -> R
     where
         F: FnOnce(&mut [u8]) -> R,

@@ -1,7 +1,6 @@
 [workspace]
 members = ["./crates/*"]
-resolver = "2"
 
-package.edition = "2021"
+package.edition = "2024"
 package.license = "MIT OR Apache-2.0"
 package.authors = ["Raphaël Thériault <self@raftar.io>"]

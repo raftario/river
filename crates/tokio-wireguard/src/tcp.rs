@@ -1,7 +1,7 @@
 use std::{
     any::type_name,
     fmt,
-    future::{poll_fn, Future},
+    future::{Future, poll_fn},
     iter,
     mem::replace,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
@@ -17,7 +17,7 @@ use smoltcp::{
 };
 use tokio::{
     io::{AsyncRead, AsyncWrite, Error, ErrorKind, Interest, ReadBuf, Ready, Result},
-    net::{lookup_host, ToSocketAddrs},
+    net::{ToSocketAddrs, lookup_host},
     time,
 };
 
@@ -123,7 +123,7 @@ impl TcpStream {
 
     fn peek_io<B: BufMut>(socket: &mut Socket<'static>, mut buf: B) -> Poll<Result<usize>> {
         match socket.peek(buf.remaining_mut()) {
-            Ok(data) if data.len() > 0 => {
+            Ok(data) if !data.is_empty() => {
                 buf.put_slice(data);
                 Poll::Ready(Ok(data.len()))
             }
@@ -313,7 +313,7 @@ impl TcpListener {
             let stream = TcpStream {
                 socket: IO::new(
                     interface.clone(),
-                    Self::socket(&interface, allocation.clone()),
+                    Self::socket(&interface, allocation),
                     None,
                 ),
             };
@@ -338,7 +338,7 @@ impl TcpListener {
     ) -> Poll<Result<(Socket<'static>, SocketAddr)>> {
         socket.state();
         if socket.may_send() {
-            let next = Self::socket(&interface, allocation);
+            let next = Self::socket(interface, allocation);
             let socket = replace(socket, next);
 
             let endpoint = match socket.remote_endpoint() {
@@ -615,6 +615,10 @@ impl OwnedReadHalf {
     }
 
     /// [`tokio::net::tcp::OwnedReadHalf::reunite`]
+    #[allow(
+        clippy::result_large_err,
+        reason = "ReuniteError must include both halves"
+    )]
     pub fn reunite(self, other: OwnedWriteHalf) -> std::result::Result<TcpStream, ReuniteError> {
         if self.0.socket.is(&other.0.socket) {
             Ok(TcpStream {
@@ -681,6 +685,10 @@ impl OwnedWriteHalf {
     }
 
     /// [`tokio::net::tcp::OwnedWriteHalf::reunite`]
+    #[allow(
+        clippy::result_large_err,
+        reason = "ReuniteError must include both halves"
+    )]
     pub fn reunite(self, other: OwnedReadHalf) -> std::result::Result<TcpStream, ReuniteError> {
         if self.0.socket.is(&other.0.socket) {
             Ok(TcpStream {

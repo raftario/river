@@ -1,14 +1,14 @@
 use std::{
     any::type_name,
     fmt,
-    future::{poll_fn, Future},
+    future::{Future, poll_fn},
     io,
     net::{IpAddr, SocketAddr},
     ops::Deref,
     pin::Pin,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     task::{Context, Poll},
     time::Duration,
@@ -17,7 +17,7 @@ use std::{
 use allocations::Proto;
 use boringtun::x25519::PublicKey;
 use pin_project_lite::pin_project;
-use rand::{rngs::OsRng, Rng, SeedableRng};
+use rand::{SeedableRng, TryRngCore, rngs::OsRng};
 use random::AtomicXorShift32;
 use smoltcp::{
     socket::{tcp, udp},
@@ -25,7 +25,7 @@ use smoltcp::{
 };
 use tokio::{
     runtime::Handle,
-    sync::{futures::Notified, mpsc, oneshot, Notify},
+    sync::{Notify, futures::Notified, mpsc, oneshot},
     time,
 };
 
@@ -202,7 +202,7 @@ impl Interface {
             is_closed: AtomicBool::new(false),
             notify_closed: Notify::new(),
             options,
-            rng: AtomicXorShift32::from_entropy(),
+            rng: AtomicXorShift32::from_os_rng(),
         });
 
         let i = Self {
@@ -227,11 +227,12 @@ impl Interface {
                 }
 
                 let selected = poll_fn(|cx| {
+                    let poll = poll.as_mut().poll(cx);
                     let recv = tunnel.socket().poll_recv_ready(cx);
                     let send = tunnel.socket().poll_send_ready(cx);
                     let can_send = device.can_send();
 
-                    if let Poll::Ready(()) = poll.as_mut().poll(cx) {
+                    if poll.is_ready() {
                         Poll::Ready(Select::Poll)
                     } else if let (Poll::Ready(Some(message)), Close::No) =
                         (rx.poll_recv(cx), close)
@@ -241,7 +242,7 @@ impl Interface {
                         Poll::Ready(Select::Recv)
                     } else if let (true, Poll::Ready(..)) = (can_send, send) {
                         Poll::Ready(Select::Send)
-                    } else if let Poll::Ready(..) = timers.poll_tick(cx) {
+                    } else if timers.poll_tick(cx).is_ready() {
                         Poll::Ready(Select::Timers)
                     } else if let (false, Close::Ready) = (can_send, close) {
                         Poll::Ready(Select::Close)
@@ -340,7 +341,7 @@ impl Interface {
         let (tx, rx) = oneshot::channel();
         self.tx
             .send(Message::RemovePeer {
-                key: key.clone(),
+                key: *key,
                 result: tx,
             })
             .map_err(|_| Self::error())?;
@@ -368,11 +369,11 @@ impl Interface {
             .map_err(|_| Self::error())
     }
 
-    pub(crate) fn allocate_tcp(&self, address: impl Into<SocketAddr>) -> Option<Allocation> {
+    pub(crate) fn allocate_tcp(&self, address: SocketAddr) -> Option<Allocation> {
         self.allocations
             .acquire(address, Proto::Tcp, &mut &self.shared.rng)
     }
-    pub(crate) fn allocate_udp(&self, address: impl Into<SocketAddr>) -> Option<Allocation> {
+    pub(crate) fn allocate_udp(&self, address: SocketAddr) -> Option<Allocation> {
         self.allocations
             .acquire(address, Proto::Udp, &mut &self.shared.rng)
     }
@@ -401,17 +402,17 @@ impl Interface {
 
     fn smol(config: &crate::config::Interface) -> (smoltcp::iface::Interface, device::Device) {
         let ips = config.address.addresses();
-        let mut device = device::Device::new(&config);
+        let mut device = device::Device::new(config);
         let mut config = smoltcp::iface::Config::new(HardwareAddress::Ip);
-        config.random_seed = OsRng.gen();
+        config.random_seed = OsRng.try_next_u64().unwrap();
 
         let mut interface =
             smoltcp::iface::Interface::new(config, &mut device, smoltcp::time::Instant::now());
         interface.update_ip_addrs(|a| {
             for ip in ips {
                 match ip {
-                    IpAddr::V4(ip) => a.push(smoltcp::wire::Ipv4Cidr::new(ip.into(), 32).into()),
-                    IpAddr::V6(ip) => a.push(smoltcp::wire::Ipv6Cidr::new(ip.into(), 128).into()),
+                    IpAddr::V4(ip) => a.push(smoltcp::wire::Ipv4Cidr::new(ip, 32).into()),
+                    IpAddr::V6(ip) => a.push(smoltcp::wire::Ipv6Cidr::new(ip, 128).into()),
                 }
                 .ok();
             }
@@ -437,13 +438,13 @@ impl ToInterface for Interface {
     }
 }
 
-impl<'a> ToInterface for &'a Interface {
+impl ToInterface for &Interface {
     async fn to_interface(self) -> Result<Interface, io::Error> {
         Ok(self.clone())
     }
 }
 
-impl<'a> ToInterface for &'a mut Interface {
+impl ToInterface for &mut Interface {
     async fn to_interface(self) -> Result<Interface, io::Error> {
         Ok(self.clone())
     }

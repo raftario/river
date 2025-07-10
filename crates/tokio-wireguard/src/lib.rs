@@ -57,6 +57,8 @@
 //! This library is built on top of [`smoltcp`] and [`boringtun`], and could not exist without these
 //! amazing projects.
 
+#![allow(clippy::match_like_matches_macro)]
+
 pub mod config;
 pub mod interface;
 mod io;

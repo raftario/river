@@ -6,8 +6,8 @@ use std::{
 
 use boringtun::{
     noise::{
-        rate_limiter::RateLimiter, HandshakeResponse, Packet, PacketCookieReply, PacketData, Tunn,
-        TunnResult,
+        HandshakeResponse, Packet, PacketCookieReply, PacketData, Tunn, TunnResult,
+        rate_limiter::RateLimiter,
     },
     x25519::{PublicKey, StaticSecret},
 };
@@ -54,7 +54,7 @@ impl Tunnel {
             address: config.address,
             keypair: (private_key, public_key),
             peers: Vec::new(),
-            rng: Lfsr24::from_entropy(),
+            rng: Lfsr24::from_os_rng(),
             rate_limiter: Arc::new(RateLimiter::new(&public_key, 64)),
             buffers: (vec![0; u16::MAX as usize], vec![0; u16::MAX as usize]),
             socket,
@@ -114,8 +114,8 @@ impl Tunnel {
                         _ => break None,
                     }
                 },
-                TunnResult::WriteToTunnelV4(p, a) if peer.is_allowed_ip(a) => Some(p),
-                TunnResult::WriteToTunnelV6(p, a) if peer.is_allowed_ip(a) => Some(p),
+                TunnResult::WriteToTunnelV4(p, a) if peer.is_allowed_ip(a.into()) => Some(p),
+                TunnResult::WriteToTunnelV6(p, a) if peer.is_allowed_ip(a.into()) => Some(p),
                 _ => None,
             };
 
@@ -227,7 +227,7 @@ impl Tunnel {
             index,
             active: true,
         })
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        .map_err(io::Error::other)?;
 
         let slot = peers.iter_mut().find(|p| !p.active);
         if let Some(slot) = slot {
@@ -269,8 +269,7 @@ struct Peer {
 }
 
 impl Peer {
-    fn is_allowed_ip(&self, address: impl Into<IpAddr>) -> bool {
-        let address = address.into();
+    fn is_allowed_ip(&self, address: IpAddr) -> bool {
         self.config
             .allowed_ips
             .iter()

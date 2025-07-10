@@ -4,8 +4,8 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     ops::Range,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
@@ -47,19 +47,18 @@ impl Allocations {
     // TODO: Rework this to allow any src+dst+port for TCP
     pub fn acquire(
         &self,
-        address: impl Into<SocketAddr>,
+        address: SocketAddr,
         proto: Proto,
         rng: &mut impl Rng,
     ) -> Option<Allocation> {
-        let address = address.into();
         let ip = address.ip();
 
         match address.port() {
             0 => {
-                let start = rng.gen_range(Self::EPHEMERAL_RANGE);
+                let start = rng.random_range(Self::EPHEMERAL_RANGE);
                 let mut port = start;
                 loop {
-                    match self.acquire((ip, port), proto, rng) {
+                    match self.acquire(SocketAddr::new(ip, port), proto, rng) {
                         Some(port) => break Some(port),
                         None if port == start => break None,
                         None if port == Self::EPHEMERAL_RANGE.end => {

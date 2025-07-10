@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use rand::{Error, RngCore, SeedableRng};
+use rand::{RngCore, SeedableRng};
 
 pub struct Lfsr24 {
     initial: u32,
@@ -77,8 +77,5 @@ impl RngCore for &AtomicXorShift32 {
         for chunk in dest.chunks_mut(4) {
             chunk.copy_from_slice(&self.next_u32().to_le_bytes()[..chunk.len()])
         }
-    }
-    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Error> {
-        Ok(self.fill_bytes(dest))
     }
 }
