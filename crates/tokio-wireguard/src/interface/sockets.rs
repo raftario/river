@@ -63,8 +63,8 @@ impl<T> SocketsInner<T> {
     fn register(&mut self, socket: crate::Shared<T>) {
         let slot = self.sockets.iter_mut().enumerate().find_map(|(i, s)| {
             match Arc::get_mut(s).map(Mutex::get_mut) {
-                Some(..) => None,
-                None => Some(i),
+                Some(..) => Some(i),
+                None => None,  
             }
         });
 
